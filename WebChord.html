@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>WebChord Pro Pocket Synth</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <style>
+        :root {
+            --device-bg: #dcdcdc; /* Lighter grey like the image */
+            --pad-bg: #f0f0f0; /* Off-white for pads */
+            --pad-active-bg: #cceeff;
+            --button-grey: #a0a0a0;
+            --button-yellow: #f0c040; /* Softer yellow */
+            --button-red: #e06060;   /* Softer red */
+            --oled-bg: #222;
+            --oled-text: #50ff50; /* Brighter green */
+            --text-dark: #333;
+            --border-light: #b0b0b0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #2c2c2c;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            touch-action: manipulation;
+            overflow: hidden; /* Prevent scrollbars from temporary large elements */
+        }
+
+        #hichord-container {
+            background-color: var(--device-bg);
+            border-radius: 12px;
+            padding: 18px;
+            width: 340px; /* Slightly wider to accommodate joystick */
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3), inset 0 0 3px rgba(255,255,255,0.2);
+            user-select: none;
+            display: none; /* Hidden until audio starts */
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .brand {
+            font-size: 22px;
+            font-weight: 600;
+            color: var(--text-dark);
+            padding-left: 5px;
+        }
+        .brand-subtitle {
+            font-size: 9px;
+            color: #666;
+            margin-top: -5px;
+            padding-left: 5px;
+        }
+
+
+        .controls-main-area {
+            display: flex;
+            gap: 15px;
+        }
+
+        .left-controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .speaker-grill {
+            width: 65px;
+            height: 65px;
+            background-image:
+                radial-gradient(circle, #444 1.2px, transparent 1.3px),
+                radial-gradient(circle, #444 1.2px, transparent 1.3px);
+            background-size: 6px 6px;
+            background-position: 0 0, 3px 3px;
+            border: 1px solid var(--border-light);
+            border-radius: 50%; /* Circular grill */
+            margin-bottom: 15px;
+            box-shadow: inset 0 0 5px rgba(0,0,0,0.1);
+        }
+        
+        .volume-knob-container {
+            position: relative;
+            width: 55px;
+            height: 55px;
+            /* Visual aid for rotation if JS updates container's transform */
+             /* transform: rotate(calc(var(--knob-rotation, -135) * 1deg)); */
+        }
+
+        input[type="range"].volume-knob {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 55px;
+            height: 55px;
+            background: transparent; 
+            border-radius: 50%;
+            cursor: grab;
+            outline: none;
+            /* This transform rotates the whole input element, affecting thumb interaction */
+            /* transform: rotate(-135deg);  -- We'll manage visual rotation differently */
+        }
+        input[type="range"].volume-knob::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 50px; 
+            height: 50px;
+            background-color: var(--pad-bg);
+            border: 2px solid var(--border-light);
+            border-radius: 50%;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        input[type="range"].volume-knob::-moz-range-thumb {
+            width: 50px;
+            height: 50px;
+            background-color: var(--pad-bg);
+            border: 2px solid var(--border-light);
+            border-radius: 50%;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+            border: none; 
+        }
+        /* Visual indicator line - styled on a separate div if JS control is needed, or pseudo on thumb if possible */
+        .volume-knob-visual-indicator { /* Add this div inside volume-knob-container in HTML if needed */
+            position: absolute;
+            top: 5px; 
+            left: 50%;
+            width: 3px;
+            height: 12px; 
+            background-color: var(--text-dark);
+            border-radius: 2px;
+            transform-origin: 50% 22.5px; /* Rotate around bottom center relative to center of knob */
+            transform: translateX(-50%) rotate(-45deg); /* Initial rotation */
+            pointer-events: none;
+        }
+
+        .volume-label {
+            font-size: 9px;
+            color: #777;
+            margin-top: 5px;
+        }
+
+
+        .right-controls {
+            flex-grow: 1;
+        }
+
+        .display-and-func-buttons {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start; 
+            margin-bottom: 8px;
+        }
+
+        .oled-screen {
+            width: 65px;
+            height: 35px;
+            background-color: var(--oled-bg);
+            color: var(--oled-text);
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 9px;
+            padding: 4px;
+            border-radius: 4px;
+            border: 1px solid #444;
+            box-shadow: inset 0 0 5px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            line-height: 1.15;
+            overflow: hidden;
+            white-space: pre;
+        }
+
+        .function-buttons {
+            display: flex;
+            gap: 6px;
+        }
+
+        .function-button {
+            width: 40px;
+            height: 40px;
+            border: 1px solid rgba(0,0,0,0.1);
+            border-radius: 6px;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 2px 3px rgba(0,0,0,0.15), inset 0 0 1px rgba(255,255,255,0.3);
+            transition: background-color 0.1s, transform 0.05s;
+        }
+        .function-button:active {
+            transform: translateY(1px);
+            box-shadow: 0 1px 1px rgba(0,0,0,0.15), inset 0 0 1px rgba(255,255,255,0.3);
+        }
+
+        #key-button { background-color: var(--button-grey); color: white; }
+        #mode-button { background-color: var(--button-yellow); color: var(--text-dark); }
+        #loop-button { background-color: var(--button-red); color: white; }
+
+        .pads-and-joystick {
+            display: flex;
+            gap: 10px; 
+        }
+
+        .pads-main-wrapper {
+             flex-grow: 1;
+        }
+        .pads-row { display: flex; gap: 6px; margin-bottom: 6px; }
+        .pads-row:last-child { margin-bottom: 0; }
+        .pads-row .pad.small { width: calc((100% - 12px) / 3); height: 45px; } 
+        .pads-row .pad.large { width: calc((100% - 18px) / 4); height: 90px; }
+
+
+        .pad {
+            background-color: var(--pad-bg);
+            border: 1px solid var(--border-light);
+            border-radius: 6px;
+            /* min-height: 45px; remove fixed min-height, rely on row calc */
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-dark);
+            box-shadow: 0 2px 3px rgba(0,0,0,0.1), inset 0 0 1px rgba(255,255,255,0.2);
+            transition: background-color 0.05s, transform 0.05s;
+        }
+        .pad:active, .pad.active {
+            background-color: var(--pad-active-bg);
+            transform: scale(0.97); 
+        }
+
+        .joystick-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center; 
+            width: 60px; 
+        }
+        .joystick {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            width: 50px;
+            height: 50px;
+            gap: 2px;
+        }
+        .joystick-button {
+            background-color: #c0c0c0;
+            border: 1px solid #999;
+            border-radius: 4px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 12px;
+            cursor: pointer;
+            color: #444;
+        }
+        .joystick-button:active { background-color: #aaa; }
+        .joystick-button.center { background-color: #ddd; } 
+        #joy-up { grid-column: 2; grid-row: 1; }
+        #joy-left { grid-column: 1; grid-row: 2; }
+        #joy-center { grid-column: 2; grid-row: 2; }
+        #joy-right { grid-column: 3; grid-row: 2; }
+        #joy-down { grid-column: 2; grid-row: 3; }
+        .joystick-label {
+            font-size: 9px;
+            color: #777;
+            margin-top: 5px;
+        }
+
+
+        .effects-controls {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-around;
+            gap: 5px;
+            margin-top: 15px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border-light);
+        }
+        .effect-toggle {
+            font-size: 9px;
+            padding: 5px 7px;
+            border-radius: 4px;
+            border: 1px solid #999;
+            cursor: pointer;
+            background-color: #e8e8e8;
+            color: var(--text-dark);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+        .effect-toggle.active {
+            background-color: #77dd77;
+            color: white;
+            font-weight: bold;
+        }
+
+        #start-audio-button {
+            background-color: #4CAF50; /* Green */
+            color: white;
+            padding: 15px 30px;
+            font-size: 18px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 50px auto;
+            display: block;
+            transition: background-color 0.2s;
+        }
+         #start-audio-button:disabled {
+            cursor: not-allowed;
+        }
+
+    </style>
+</head>
+<body>
+
+    <button id="start-audio-button">Click to Start Audio</button>
+
+    <div id="hichord-container">
+        <div class="header">
+            <div>
+                <div class="brand">WebChord</div>
+                <div class="brand-subtitle">Pocket Audio Synth</div>
+            </div>
+        </div>
+
+        <div class="controls-main-area">
+            <div class="left-controls">
+                <div class="speaker-grill"></div>
+                 <div class="volume-knob-container">
+                    <input type="range" id="volumeKnob" class="volume-knob" min="0" max="100" value="75" step="1">
+                    <div class="volume-knob-visual-indicator" id="volumeKnobIndicator"></div>
+                </div>
+                <div class="volume-label">VOLUME</div>
+            </div>
+
+            <div class="right-controls">
+                <div class="display-and-func-buttons">
+                    <div class="oled-screen" id="oledScreen">
+                        MODE:CHORD<br>
+                        KEY:C MAJ T<br> 
+                        BPM:120 OCT:3
+                    </div>
+                    <div class="function-buttons">
+                        <button class="function-button" id="key-button" title="S:Root|L:Scale">🔑</button>
+                        <button class="function-button" id="mode-button" title="S:Mode|L:Instr/Kit">〰️</button>
+                        <button class="function-button" id="loop-button" title="S:Loop|L:Metro">↻</button>
+                    </div>
+                </div>
+
+                <div class="pads-and-joystick">
+                    <div class="pads-main-wrapper">
+                        <div class="pads-row">
+                            <div class="pad small" data-pad="0">I</div>
+                            <div class="pad small" data-pad="1">ii</div>
+                            <div class="pad small" data-pad="2">iii</div>
+                        </div>
+                        <div class="pads-row">
+                            <div class="pad large" data-pad="3">IV</div>
+                            <div class="pad large" data-pad="4">V</div>
+                            <div class="pad large" data-pad="5">vi</div>
+                            <div class="pad large" data-pad="6">vii°</div>
+                        </div>
+                    </div>
+
+                    <div class="joystick-container">
+                        <div class="joystick">
+                            <div class="joystick-button" id="joy-empty-tl"></div> <div class="joystick-button" id="joy-up">▲</div> <div class="joystick-button" id="joy-empty-tr"></div>
+                            <div class="joystick-button" id="joy-left">◀</div>  <div class="joystick-button center" id="joy-center"></div> <div class="joystick-button" id="joy-right">▶</div>
+                            <div class="joystick-button" id="joy-empty-bl"></div> <div class="joystick-button" id="joy-down">▼</div> <div class="joystick-button" id="joy-empty-br"></div>
+                        </div>
+                        <div class="joystick-label">MODIFY</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="effects-controls">
+            <button class="effect-toggle" data-effect="reverb">Reverb</button>
+            <button class="effect-toggle" data-effect="delay">Delay</button>
+            <button class="effect-toggle" data-effect="chorus">Chorus</button>
+            <button class="effect-toggle" data-effect="tremolo">Tremolo</button>
+            <button class="effect-toggle" data-effect="filter" title="Lowpass Filter">LPF</button>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const oledScreen = document.getElementById('oledScreen');
+        const volumeKnob = document.getElementById('volumeKnob');
+        const volumeKnobIndicator = document.getElementById('volumeKnobIndicator');
+        const pads = document.querySelectorAll('.pad');
+        const keyButton = document.getElementById('key-button');
+        const modeButton = document.getElementById('mode-button');
+        const loopButton = document.getElementById('loop-button');
+        const startAudioButton = document.getElementById('start-audio-button');
+        const hichordContainer = document.getElementById('hichord-container');
+        const effectToggles = document.querySelectorAll('.effect-toggle');
+        const joystickButtons = {
+            up: document.getElementById('joy-up'),
+            down: document.getElementById('joy-down'),
+            left: document.getElementById('joy-left'),
+            right: document.getElementById('joy-right'),
+        };
+
+        // --- Global State ---
+        let audioInitialized = false;
+        const MODES = ['CHORD', 'ARP', 'DRUM', 'STRUM'];
+        let currentModeIndex = 0;
+        const ROOT_NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        let currentRootNoteIndex = 0;
+        const SCALE_TYPES = ['MAJOR', 'MINOR'];
+        let currentScaleTypeIndex = 0;
+        let chordQualityModifier = 'triad';
+        let currentOctave = 3;
+
+        const INSTRUMENTS_CHORD = ['PIANO', 'SYNTH', 'PADSYN'];
+        let currentInstrumentChordIndex = 0;
+        const DRUM_KITS = ['ACOUSTIC', 'ELECTRONIC'];
+        let currentDrumKitIndex = 0;
+        
+        let bpm = 120;
+        
+        let looperState = 'idle'; 
+        let loopData = []; 
+        let loopPart;
+        let metronomeEnabled = false;
+        let metronomeLoop;
+
+        let masterGain, reverb, delay, chorus, tremolo, filter;
+        let activeSynth; 
+        let piano, synth1, padSynth; 
+        let drumSamplers = {}; 
+        let metronomeSynth;
+        const TONES_IN_OCTAVE = 12;
+
+        // --- Utility Functions ---
+        function noteToMidi(noteNameWithOctave) { 
+            const noteParts = noteNameWithOctave.match(/([A-G])(#|b)?([0-9])/);
+            if (!noteParts) return null;
+            const note = noteParts[1];
+            const accidental = noteParts[2];
+            const octaveVal = parseInt(noteParts[3]);
+            const noteValues = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+            let midi = noteValues[note.toUpperCase()] + (octaveVal + 1) * TONES_IN_OCTAVE;
+            if (accidental === '#') midi++;
+            if (accidental === 'b') midi--;
+            return midi;
+        }
+        function midiToNoteName(midiNumber) { 
+             if (midiNumber < 0 || midiNumber > 127) return null;
+            const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+            const octaveVal = Math.floor(midiNumber / TONES_IN_OCTAVE) - 1;
+            const noteIndex = midiNumber % TONES_IN_OCTAVE;
+            return noteNames[noteIndex] + octaveVal;
+        }
+        function getScaleNotes(rootNote, scaleType, numOctaves = 1, startOctave = 3) { /* ... same ... */ 
+            const rootMidiBase = noteToMidi(rootNote + startOctave);
+            if (rootMidiBase === null) return [];
+            const majorIntervals = [0, 2, 4, 5, 7, 9, 11];
+            const minorIntervals = [0, 2, 3, 5, 7, 8, 10];
+            const intervals = scaleType.toUpperCase() === 'MAJOR' ? majorIntervals : minorIntervals;
+            let scaleNotes = [];
+            for (let octOffset = 0; octOffset < numOctaves; octOffset++) {
+                intervals.forEach(interval => {
+                    scaleNotes.push(midiToNoteName(rootMidiBase + interval + (octOffset * TONES_IN_OCTAVE)));
+                });
+            }
+            scaleNotes.push(midiToNoteName(rootMidiBase + (numOctaves * TONES_IN_OCTAVE)));
+            return scaleNotes.filter(n => n);
+        }
+        function getDiatonicChord(rootNoteName, scaleTypeName, degreeIndex, qualityMod = 'triad', baseOctaveInput = 3) { /* ... same ... */
+            const currentNotesOctave = baseOctaveInput; // Use the passed octave
+            const scale = getScaleNotes(rootNoteName, scaleTypeName, 2, currentNotesOctave);
+            if (scale.length === 0 || degreeIndex >= 7 || degreeIndex < 0 ) return []; // degreeIndex is 0-6
+
+            let notes = [];
+            const rootChordNoteFullName = scale[degreeIndex]; // This note includes the correct octave
+            if (!rootChordNoteFullName) return [];
+
+            const rootChordNoteMidi = noteToMidi(rootChordNoteFullName);
+
+            // Determine base quality from scale
+            let thirdInterval = 3; // minor third
+            let fifthInterval = 7; // perfect fifth
+            let seventhInterval = 10; // minor seventh
+
+            if (scaleTypeName.toUpperCase() === 'MAJOR') {
+                const majorChordDegrees = [0, 3, 4]; // I, IV, V
+                const minorChordDegrees = [1, 2, 5]; // ii, iii, vi
+                // degree 6 (vii) is diminished
+                if (majorChordDegrees.includes(degreeIndex)) thirdInterval = 4; // major third
+                else if (minorChordDegrees.includes(degreeIndex)) thirdInterval = 3; // minor third
+                else if (degreeIndex === 6) { thirdInterval = 3; fifthInterval = 6; } // diminished: minor third, diminished fifth
+            } else { // MINOR scale (natural minor for diatonic chords)
+                const minorChordDegreesNatural = [0, 3, 4]; // i, iv, v (natural minor are minor)
+                const majorChordDegreesNatural = [2, 5, 6]; // III, VI, VII (natural minor are major)
+                // degree 1 (ii) is diminished in natural minor
+                if (majorChordDegreesNatural.includes(degreeIndex)) thirdInterval = 4;
+                else if (minorChordDegreesNatural.includes(degreeIndex)) thirdInterval = 3;
+                else if (degreeIndex === 1) { thirdInterval = 3; fifthInterval = 6; }
+            }
+            
+            notes = [
+                midiToNoteName(rootChordNoteMidi),
+                midiToNoteName(rootChordNoteMidi + thirdInterval),
+                midiToNoteName(rootChordNoteMidi + fifthInterval)
+            ];
+
+            if (qualityMod === 'seventh') {
+                // Simplified seventh logic for now, can be refined per chord type
+                if (thirdInterval === 4 && fifthInterval === 7) seventhInterval = 11; // Major 7th for major chords
+                else seventhInterval = 10; // Minor 7th for minor and dominant (V7)
+                if (fifthInterval === 6) seventhInterval = 9; // half-dim 7th (m7b5) for diminished chords
+                notes.push(midiToNoteName(rootChordNoteMidi + seventhInterval));
+            } else if (qualityMod === 'sus4') {
+                notes[1] = midiToNoteName(rootChordNoteMidi + 5); // Perfect 4th
+                notes[2] = midiToNoteName(rootChordNoteMidi + 7); // Ensure perfect 5th
+            } else if (qualityMod === 'minorRootOverride') {
+                 notes[1] = midiToNoteName(rootChordNoteMidi + 3);
+            } else if (qualityMod === 'majorRootOverride') {
+                 notes[1] = midiToNoteName(rootChordNoteMidi + 4);
+            }
+            return notes.filter(note => note != null);
+        }
+
+        // --- UI Update Functions ---
+        function updateAllUI() {
+            if (!audioInitialized) return; // Don't update if not ready
+            updateOLEDDisplay();
+            updatePadLabels();
+            updateVolumeKnobVisual();
+        }
+        function updateOLEDDisplay() { /* ... same logic ... */
+            if (!audioInitialized) return;
+            const root = ROOT_NOTES[currentRootNoteIndex];
+            const scale = SCALE_TYPES[currentScaleTypeIndex].substring(0,3);
+            const mode = MODES[currentModeIndex].substring(0,4);
+            let instrDisplay = "";
+            let qualityDisp = chordQualityModifier.substring(0,1).toUpperCase();
+            if (chordQualityModifier === 'triad') qualityDisp = 'T';
+            if (chordQualityModifier === 'seventh') qualityDisp = '7';
+            if (chordQualityModifier === 'sus4') qualityDisp = 'S4';
+
+            if (mode === 'CHOR' || mode === 'ARP' || mode === 'STRU') { // STRUM
+                instrDisplay = INSTRUMENTS_CHORD[currentInstrumentChordIndex].substring(0,3);
+            } else if (mode === 'DRUM') {
+                instrDisplay = DRUM_KITS[currentDrumKitIndex].substring(0,3);
+            }
+
+            let looperInfo = "";
+            if (looperState === 'recording') looperInfo = "REC🔴";
+            else if (looperState === 'playing') looperInfo = "PLAY►";
+            else if (metronomeEnabled && looperState === 'idle') looperInfo = "METRO";
+
+            oledScreen.innerHTML = `
+${mode}:${instrDisplay} ${looperInfo}
+KEY:${root} ${scale} ${qualityDisp}
+BPM:${bpm} OCT:${currentOctave}`.trim();
+        }
+        function updatePadLabels() { /* ... same logic ... */
+            if (!audioInitialized) return;
+            const scaleType = SCALE_TYPES[currentScaleTypeIndex];
+            const romanMajor = ["I", "ii", "iii", "IV", "V", "vi", "vii°"];
+            const romanMinor = ["i", "ii°", "III", "iv", "V", "VI", "VII"];
+            const numerals = scaleType === 'MAJOR' ? romanMajor : romanMinor;
+
+            pads.forEach((pad, index) => {
+                if (MODES[currentModeIndex] !== 'DRUM') {
+                    pad.textContent = numerals[index] || `P${index+1}`;
+                } else {
+                    const drumNames = ["KICK", "SNR", "HAT-C", "HAT-O", "TOM1", "TOM2", "CYM"];
+                    pad.textContent = drumNames[index] || `DRM${index+1}`;
+                }
+            });
+        }
+        function updateVolumeKnobVisual() {
+            if (!audioInitialized || !volumeKnob || !volumeKnobIndicator) return;
+            const percentage = parseFloat(volumeKnob.value) / 100; // 0 to 1
+            const rotation = -45 + (percentage * 270); // Range from -45 to 225 (example)
+            volumeKnobIndicator.style.transform = `translateX(-50%) rotate(${rotation}deg)`;
+        }
+
+        // --- Audio Initialization ---
+        startAudioButton.addEventListener('click', async () => {
+            if (audioInitialized) return;
+            console.log("Start Audio button clicked.");
+            startAudioButton.disabled = true;
+            startAudioButton.textContent = "Initializing...";
+            startAudioButton.style.backgroundColor = '#fd971f'; // Orange
+
+            try {
+                await Tone.start();
+                console.log("Tone.start() successful.");
+                await fullAudioSystemSetup(); // Call the main setup
+
+                audioInitialized = true;
+                hichordContainer.style.display = 'block';
+                startAudioButton.style.display = 'none';
+                console.log("Audio Initialized Successfully and UI ready.");
+                updateAllUI(); // Final UI update
+
+            } catch (e) {
+                console.error("Error during audio initialization:", e);
+                alert(`FATAL ERROR starting audio: ${e.message}.\n\nPlease open the browser console (F12) and check for errors related to Tone.js or your audio device.\n\nRefresh the page to try again.`);
+                startAudioButton.textContent = "Audio Error - Refresh";
+                startAudioButton.style.backgroundColor = '#e74c3c'; // Red
+                startAudioButton.disabled = false;
+            }
+        });
+
+        async function fullAudioSystemSetup() {
+            console.log("fullAudioSystemSetup started.");
+            Tone.Transport.bpm.value = bpm;
+            masterGain = new Tone.Gain(0.75).toDestination();
+            
+            filter = new Tone.Filter(20000, "lowpass").connect(masterGain);
+            tremolo = new Tone.Tremolo(4, 0.0).connect(filter).start();
+            chorus = new Tone.Chorus(2, 1.5, 0.5).connect(tremolo); // freq, delayTime, depth
+            delay = new Tone.FeedbackDelay("8n", 0.0).connect(chorus); 
+            reverb = new Tone.Reverb({ decay: 1.5, wet: 0.0 }).connect(delay);
+            console.log("Effects chain created.");
+
+            piano = new Tone.PolySynth(Tone.Synth, { oscillator: { type: 'triangle' }, envelope: { attack: 0.005, decay: 0.3, sustain: 0.1, release: 0.2 }, volume: -8 }).connect(reverb);
+            synth1 = new Tone.PolySynth(Tone.Synth, { oscillator: { type: 'sawtooth6', spread: 20 }, envelope: { attack: 0.02, decay: 0.1, sustain: 0.8, release: 0.5 }, filter: { type: "lowpass", Q:2, rolloff: -12, frequency: 3000}, filterEnvelope: { attack: 0.05, decay: 0.1, sustain:0.2, release: 0.5, baseFrequency: 200, octaves:3 }, volume: -12 }).connect(reverb);
+            padSynth = new Tone.PolySynth(Tone.Synth, { oscillator: { type: 'pwm', modulationFrequency: 0.2 }, envelope: { attack: 0.3, decay: 0.1, sustain: 0.9, release: 0.8 }, filter: { type: "lowpass", Q:1, rolloff: -24, frequency: 2000}, volume: -10 }).connect(reverb);
+            activeSynth = piano;
+            console.log("Chord instruments created.");
+
+            drumSamplers['ACOUSTIC'] = [ /* ... (definitions as before, ensure they are valid) ... */ 
+                new Tone.MembraneSynth({pitchDecay:0.05,octaves:10,envelope:{attack:0.001,decay:0.4,sustain:0.01,release:1.4}}).connect(reverb),
+                new Tone.NoiseSynth({noise:{type:'white'},envelope:{attack:0.005,decay:0.15,sustain:0}}).connect(reverb), 
+                new Tone.MetalSynth({frequency:300,envelope:{attack:0.001,decay:0.1,release:0.05},harmonicity:5.1,modulationIndex:16,octaves:0.5}).connect(reverb),
+                new Tone.MetalSynth({frequency:300,envelope:{attack:0.001,decay:0.3,release:0.1},harmonicity:5.1,modulationIndex:22,octaves:0.8}).connect(reverb),
+                new Tone.MembraneSynth({pitchDecay:0.05,octaves:6,envelope:{attack:0.001,decay:0.3,sustain:0.01,release:1}}).connect(reverb), 
+                new Tone.MembraneSynth({pitchDecay:0.06,octaves:4,envelope:{attack:0.001,decay:0.3,sustain:0.01,release:1}}).connect(reverb), 
+                new Tone.MetalSynth({frequency:200,envelope:{attack:0.001,decay:1.5,release:0.5},harmonicity:6,modulationIndex:32,octaves:1}).connect(reverb), 
+            ];
+            drumSamplers['ELECTRONIC'] = [  /* ... (definitions as before, ensure they are valid) ... */ 
+                new Tone.MembraneSynth({pitchDecay:0.02,octaves:12,oscillator:{type:'triangle'},envelope:{attack:0.001,decay:0.3,sustain:0.01,release:1.0}}).connect(reverb),
+                new Tone.NoiseSynth({noise:{type:'pink'},filter:{type:'bandpass', Q:2, frequency:1200}, envelope:{attack:0.001,decay:0.08,sustain:0}}).connect(reverb),
+                new Tone.MetalSynth({frequency:400,envelope:{attack:0.001,decay:0.05,release:0.02},harmonicity:3,modulationIndex:10,octaves:0.2}).connect(reverb),
+                new Tone.MetalSynth({frequency:400,envelope:{attack:0.001,decay:0.2,release:0.05},harmonicity:3,modulationIndex:15,octaves:0.3}).connect(reverb),
+                new Tone.MembraneSynth({pitchDecay:0.03,octaves:5,oscillator:{type:'sine'},envelope:{attack:0.001,decay:0.2,sustain:0.01,release:0.8}}).connect(reverb),
+                new Tone.MembraneSynth({pitchDecay:0.04,octaves:3,oscillator:{type:'sine'},envelope:{attack:0.001,decay:0.2,sustain:0.01,release:0.8}}).connect(reverb),
+                new Tone.NoiseSynth({noise:{type:'white'},filter:{type:'highpass',Q:1,frequency:3000}, envelope:{attack:0.01,decay:0.8,sustain:0}}).connect(reverb),
+            ];
+            console.log("Drum samplers created.");
+
+            metronomeSynth = new Tone.MembraneSynth({ pitchDecay: 0.008, octaves: 1, oscillator: {type: "square"}, envelope: {attack: 0.001, decay: 0.05, sustain: 0, release: 0.05} }).connect(masterGain);
+            console.log("Metronome synth created.");
+            console.log("fullAudioSystemSetup completed.");
+        }
+        
+        // --- Event Handlers ---
+        volumeKnob.addEventListener('input', (e) => { /* ... same ... */
+            if (!audioInitialized) return;
+            const gainValue = parseFloat(e.target.value) / 100;
+            masterGain.gain.value = gainValue * gainValue; 
+            updateVolumeKnobVisual();
+        });
+
+        let activePads = {}; 
+        let arpInterval;
+        let arpNotes = [];
+        let currentArpIndex = 0;
+
+        function playNoteForMode(padIndex, time, release = false) { /* ... same logic, ensure activeSynth is used ... */
+            if(!audioInitialized) return;
+            const mode = MODES[currentModeIndex];
+            const root = ROOT_NOTES[currentRootNoteIndex];
+            const scale = SCALE_TYPES[currentScaleTypeIndex];
+            
+            let notesToPlay = [];
+            let duration = "4n";
+
+            if (mode === 'CHORD') {
+                notesToPlay = getDiatonicChord(root, scale, padIndex, chordQualityModifier, currentOctave);
+                if (notesToPlay.length > 0) {
+                    if (!release) activeSynth.triggerAttack(notesToPlay, time);
+                    else activeSynth.triggerRelease(notesToPlay, time + 0.05);
+                }
+            } else if (mode === 'DRUM') {
+                const kitName = DRUM_KITS[currentDrumKitIndex];
+                const currentKit = drumSamplers[kitName];
+                if (currentKit && currentKit[padIndex]) {
+                    const drumSound = currentKit[padIndex];
+                    if (!release) { // Drums are one-shot
+                         // Simplified trigger for demo
+                        if (drumSound instanceof Tone.MembraneSynth || drumSound instanceof Tone.MetalSynth) drumSound.triggerAttackRelease('C2', "8n", time);
+                        else if (drumSound instanceof Tone.NoiseSynth) drumSound.triggerAttackRelease("8n", time);
+                    }
+                }
+            } else if (mode === 'ARP') {
+                if (!release) { 
+                    if (arpInterval) clearInterval(arpInterval); arpInterval = null;
+                    arpNotes = getDiatonicChord(root, scale, padIndex, chordQualityModifier, currentOctave);
+                    currentArpIndex = 0;
+                    if (arpNotes.length > 0) {
+                        const arpRateSeconds = Tone.Time("16n").toSeconds(); // Base rate
+                        
+                        function playArpNote() {
+                            if (!audioInitialized || MODES[currentModeIndex] !== 'ARP' || arpNotes.length === 0) {
+                                if(arpInterval) clearInterval(arpInterval); arpInterval = null; return;
+                            }
+                            activeSynth.triggerAttackRelease(arpNotes[currentArpIndex % arpNotes.length], "16n", Tone.now());
+                            currentArpIndex++;
+                        }
+                        playArpNote(); 
+                        arpInterval = setInterval(playArpNote, arpRateSeconds * 1000 * (120/bpm) ); // Adjust interval by BPM
+                    }
+                } else { 
+                    if (arpInterval) clearInterval(arpInterval); arpInterval = null;
+                    activeSynth.releaseAll(time + 0.05); // Release any lingering arp notes
+                }
+            } else if (mode === 'STRUM') {
+                 if (!release) {
+                    notesToPlay = getDiatonicChord(root, scale, padIndex, chordQualityModifier, currentOctave);
+                    if (notesToPlay.length > 0) {
+                        notesToPlay.forEach((note, i) => {
+                            activeSynth.triggerAttackRelease(note, "8n", time + i * 0.035); 
+                        });
+                    }
+                }
+            }
+
+            if (looperState === 'recording' && !release && notesToPlay.length > 0) {
+                 const eventTimeTicks = Tone.Transport.ticks; 
+                 loopData.push({ 
+                    time: eventTimeTicks, 
+                    event: { 
+                        type: mode, 
+                        notes: notesToPlay, 
+                        padIndex: padIndex, 
+                        instrument: currentInstrumentChordIndex, 
+                        drumKit: currentDrumKitIndex, 
+                        quality: chordQualityModifier,
+                        octave: currentOctave,
+                        duration: "4n" 
+                    }
+                });
+            }
+        }
+        pads.forEach((pad, index) => { /* ... same listeners ... */ 
+            pad.addEventListener('mousedown', (e) => { if(e.button === 0 && audioInitialized) { handlePadInteraction(index, pad, false); } });
+            pad.addEventListener('mouseup', (e) => { if(e.button === 0 && audioInitialized) { handlePadInteraction(index, pad, true); }  });
+            pad.addEventListener('mouseleave', (e) => { if (audioInitialized && pad.classList.contains('active')) { handlePadInteraction(index, pad, true); }});
+            pad.addEventListener('touchstart', (e) => {e.preventDefault(); if(audioInitialized) handlePadInteraction(index, pad, false);}, {passive: false});
+            pad.addEventListener('touchend', (e) => {e.preventDefault(); if(audioInitialized) handlePadInteraction(index, pad, true);});
+        });
+        function handlePadInteraction(index, padElement, isRelease) { /* ... same logic ... */
+            if (!audioInitialized) return;
+            const time = Tone.Transport.now();
+            if (!isRelease) {
+                padElement.classList.add('active');
+                activePads[index] = true;
+                playNoteForMode(index, time, false);
+            } else {
+                if (activePads[index]) {
+                    padElement.classList.remove('active');
+                    delete activePads[index];
+                    playNoteForMode(index, time, true);
+                }
+            }
+        }
+        
+        function setupButtonWithLongPress(button, shortPressAction, longPressAction, longPressDuration = 400) { /* ... same, ensure audioInitialized check ... */
+            let pressTimer; let isLongPress = false;
+            const startPress = (e) => {
+                if (!audioInitialized || (e.type === 'mousedown' && e.button !== 0)) return;
+                isLongPress = false;
+                pressTimer = setTimeout(() => { isLongPress = true; if (longPressAction) longPressAction(); updateAllUI(); }, longPressDuration);
+            };
+            const endPress = (e) => {
+                if (!audioInitialized || (e.type === 'mouseup' && e.button !== 0)) return;
+                clearTimeout(pressTimer); if (!isLongPress && shortPressAction) shortPressAction(); updateAllUI();
+            };
+            button.addEventListener('mousedown', startPress); button.addEventListener('mouseup', endPress);
+            button.addEventListener('mouseleave', (e) => {if (audioInitialized && e.buttons === 1) clearTimeout(pressTimer);});
+            button.addEventListener('touchstart', (e) => {e.preventDefault(); startPress(e);}, {passive: false});
+            button.addEventListener('touchend', (e) => {e.preventDefault(); endPress(e);});
+        }
+
+        // Key Button Actions
+        setupButtonWithLongPress(keyButton, 
+            () => { currentRootNoteIndex = (currentRootNoteIndex + 1) % ROOT_NOTES.length; },
+            () => { currentScaleTypeIndex = (currentScaleTypeIndex + 1) % SCALE_TYPES.length; }
+        );
+        // Mode Button Actions
+        setupButtonWithLongPress(modeButton,
+            () => { currentModeIndex = (currentModeIndex + 1) % MODES.length; if(arpInterval) clearInterval(arpInterval); arpInterval=null; /* Stop arp on mode change */ }, 
+            () => { 
+                const mode = MODES[currentModeIndex];
+                if (mode === 'CHORD' || mode === 'ARP' || mode === 'STRUM') {
+                    currentInstrumentChordIndex = (currentInstrumentChordIndex + 1) % INSTRUMENTS_CHORD.length;
+                    if (currentInstrumentChordIndex === 0) activeSynth = piano;
+                    else if (currentInstrumentChordIndex === 1) activeSynth = synth1;
+                    else if (currentInstrumentChordIndex === 2) activeSynth = padSynth;
+                } else if (mode === 'DRUM') {
+                    currentDrumKitIndex = (currentDrumKitIndex + 1) % DRUM_KITS.length;
+                }
+            }
+        );
+        // Loop Button Actions
+        setupButtonWithLongPress(loopButton,
+            () => { /* ... same looper logic, ensure audioInitialized check ... */
+                if (!audioInitialized) return;
+                if (looperState === 'idle') {
+                    looperState = 'recording'; loopData = [];
+                    if(Tone.Transport.state !== 'started') Tone.Transport.start();
+                    loopButton.style.backgroundColor = '#ff8c00'; // Orange
+                } else if (looperState === 'recording') {
+                    looperState = 'playing';
+                    if (loopPart) loopPart.dispose(); loopPart = null;
+                    if (loopData.length > 0) {
+                        loopPart = new Tone.Part((time, value) => {
+                            const { type, notes, padIndex, instrument, drumKit, quality, octave, duration } = value.event;
+                            let tempSynth = activeSynth;
+                            if (type === 'CHORD' || type === 'ARP' || type === 'STRUM') {
+                                if (instrument === 0) tempSynth = piano; else if (instrument === 1) tempSynth = synth1; else tempSynth = padSynth;
+                                const notesForLoop = notes || getDiatonicChord(ROOT_NOTES[currentRootNoteIndex], SCALE_TYPES[currentScaleTypeIndex], padIndex, quality, octave);
+                                if (notesForLoop.length > 0) tempSynth.triggerAttackRelease(notesForLoop, duration, time);
+                            } else if (type === 'DRUM') {
+                                const dKitName = DRUM_KITS[drumKit];
+                                const dSound = drumSamplers[dKitName]?.[padIndex % drumSamplers[dKitName]?.length];
+                                if (dSound) {
+                                   if (dSound instanceof Tone.MembraneSynth || dSound instanceof Tone.MetalSynth) dSound.triggerAttackRelease('C2', duration, time);
+                                   else if (dSound instanceof Tone.NoiseSynth) dSound.triggerAttackRelease(duration, time);
+                                }
+                            }
+                        }, loopData).start(0);
+                        
+                        const lastEventTicks = loopData.length > 0 ? loopData[loopData.length - 1].time : Tone.Transport.ticks;
+                        const measureTicks = Tone.Time("1m").toTicks();
+                        const loopEndTicks = Math.ceil((lastEventTicks + measureTicks) / measureTicks) * measureTicks;
+                        loopPart.loopEnd = Tone.TransportTime(loopEndTicks).toNotation();
+                        loopPart.loop = true;
+                    } else { looperState = 'idle'; } // No data, go back
+                    loopButton.style.backgroundColor = '#5cb85c'; // Green
+                } else if (looperState === 'playing') {
+                    looperState = 'idle'; if (loopPart) { loopPart.stop(0); loopPart.dispose(); loopPart = null; }
+                    if (!metronomeEnabled) Tone.Transport.stop();
+                    loopButton.style.backgroundColor = getComputedStyle(document.documentElement).getPropertyValue('--button-red').trim();
+                }
+            },
+            () => { /* ... same metronome logic ... */
+                if (!audioInitialized) return;
+                metronomeEnabled = !metronomeEnabled;
+                if (metronomeEnabled) {
+                    if (metronomeLoop) metronomeLoop.dispose();
+                    metronomeLoop = new Tone.Loop(time => metronomeSynth.triggerAttackRelease("C4", "32n", time), "4n").start(0);
+                    if (Tone.Transport.state !== 'started') Tone.Transport.start();
+                } else {
+                    if (metronomeLoop) { metronomeLoop.stop(0); metronomeLoop.dispose(); metronomeLoop = null;}
+                    if (looperState !== 'playing' && Tone.Transport.state === 'started') Tone.Transport.stop();
+                }
+            }
+        );
+
+        // Joystick Handlers
+        Object.values(joystickButtons).forEach(btn => { if(btn) btn.addEventListener('click', handleJoystick); });
+        function handleJoystick(e) { /* ... same, ensure audioInitialized check ... */
+            if (!audioInitialized) return;
+            const direction = e.target.id.replace('joy-', '');
+            const qualities = ['triad', 'seventh', 'sus4']; let currentIndex;
+            switch(direction) {
+                case 'up': currentOctave = Math.min(5, currentOctave + 1); break;
+                case 'down': currentOctave = Math.max(1, currentOctave - 1); break;
+                case 'left': 
+                    currentIndex = qualities.indexOf(chordQualityModifier);
+                    chordQualityModifier = qualities[(currentIndex - 1 + qualities.length) % qualities.length];
+                    break;
+                case 'right': 
+                    currentIndex = qualities.indexOf(chordQualityModifier);
+                    chordQualityModifier = qualities[(currentIndex + 1) % qualities.length];
+                    break;
+            }
+            updateAllUI();
+        }
+
+        // Effects Toggles
+        effectToggles.forEach(button => { button.addEventListener('click', () => { /* ... same ... */ 
+            if (!audioInitialized) return;
+            button.classList.toggle('active'); const effectName = button.dataset.effect; const isActive = button.classList.contains('active');
+            switch(effectName) {
+                case 'reverb': reverb.wet.value = isActive ? 0.35 : 0.0; break;
+                case 'delay': delay.wet.value = isActive ? 0.4 : 0.0; delay.feedback.value = isActive ? 0.35 : 0.0; break;
+                case 'chorus': chorus.wet.value = isActive ? 0.6 : 0.0; break;
+                case 'tremolo': tremolo.depth.value = isActive ? 0.5 : 0.0; break;
+                case 'filter': filter.frequency.value = isActive ? 1200 : 20000; filter.Q.value = isActive ? 1.5 : 1; break;
+            }
+        }); });
+        
+        // Global key listener for BPM
+        document.addEventListener('keydown', (e) => { /* ... same ... */
+            if (!audioInitialized || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return; // Ignore if typing in input
+            if (e.key === '+' || e.key === '=') { bpm = Math.min(300, bpm + 5); Tone.Transport.bpm.value = bpm; updateAllUI(); } 
+            else if (e.key === '-' || e.key === '_') { bpm = Math.max(40, bpm - 5); Tone.Transport.bpm.value = bpm; updateAllUI(); }
+        });
+
+    </script>
+</body>
+</html>
